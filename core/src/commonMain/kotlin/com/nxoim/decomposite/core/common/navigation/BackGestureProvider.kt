@@ -58,8 +58,48 @@ fun BackGestureProviderContainer(
     progressConfirmationThreshold: Float = 0.2F,
     velocityConfirmationThreshold: Dp = 8.dp,
     content: @Composable () -> Unit,
+) = BackGestureProviderContainer(
+    defaultComponentContext.backHandler as BackDispatcher,
+    modifier,
+    startEdgeEnabled,
+    endEdgeEnabled,
+    backGestureProcessingType,
+    activationOffsetThreshold,
+    progressConfirmationThreshold,
+    velocityConfirmationThreshold,
+    content
+)
+
+/**
+ * Handles back gestures on both edges of the screen and drives the provided [BackDispatcher] accordingly.
+ *
+ * @param modifier a [Modifier] to applied to the overlay.
+ * @param startEdgeEnabled controls whether the start edge is enabled or not,
+ * left in LTR mode and right in RTL mode.
+ * @param endEdgeEnabled controls whether the end edge is enabled or not,
+ * right in LTR mode and left in RTL mode.
+ * @param backGestureProcessingType The type of gesture processing mechanism.
+ * @param activationOffsetThreshold a distance threshold in [Dp] from the initial touch point in the direction
+ * of gesture. The gesture is initiated once this threshold is surpassed.
+ * @param progressConfirmationThreshold a threshold of progress that needs to be reached for the gesture
+ * to be confirmed once the touch is completed. The gesture is cancelled if the touch is completed without
+ * reaching the threshold.
+ * @param content a content to be shown under the overlay.
+ */
+@Composable
+@Stable
+@ExperimentalDecomposeApi
+fun BackGestureProviderContainer(
+    backDispatcher: BackDispatcher,
+    modifier: Modifier = Modifier,
+    startEdgeEnabled: Boolean = true,
+    endEdgeEnabled: Boolean = false,
+    backGestureProcessingType: BackGestureProcessingType = BackGestureProcessingType.BlockChildDragInputsPartially(),
+    activationOffsetThreshold: Dp = 4.dp,
+    progressConfirmationThreshold: Float = 0.2F,
+    velocityConfirmationThreshold: Dp = 8.dp,
+    content: @Composable () -> Unit,
 ) {
-    val backDispatcher = defaultComponentContext.backHandler as BackDispatcher
     val layoutDirection = LocalLayoutDirection.current
 
     Box(
@@ -82,7 +122,6 @@ fun BackGestureProviderContainer(
         content()
     }
 }
-
 
 sealed class BackGestureProcessingType(val edgeWidth: Dp) {
     /**
