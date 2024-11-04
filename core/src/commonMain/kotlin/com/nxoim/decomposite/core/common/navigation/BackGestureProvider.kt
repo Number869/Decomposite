@@ -25,8 +25,6 @@ import com.arkivanov.essenty.backhandler.BackDispatcher
 import com.arkivanov.essenty.backhandler.BackEvent
 import com.arkivanov.essenty.backhandler.BackEvent.SwipeEdge
 import com.nxoim.decomposite.core.common.navigation.BackGestureHandler.Edge
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
 
 
 // based on PredictiveBackGestureOverlay from the decompose extensions
@@ -39,7 +37,7 @@ import kotlinx.coroutines.launch
  * left in LTR mode and right in RTL mode.
  * @param endEdgeEnabled controls whether the end edge is enabled or not,
  * right in LTR mode and left in RTL mode.
- * @param edgeWidth the width in [Dp] from the screen edge where the gesture first down touch is recognized. When null - use the entire width of the screen.
+ * @param backGestureProcessingType The type of gesture processing mechanism.
  * @param activationOffsetThreshold a distance threshold in [Dp] from the initial touch point in the direction
  * of gesture. The gesture is initiated once this threshold is surpassed.
  * @param progressConfirmationThreshold a threshold of progress that needs to be reached for the gesture
@@ -55,14 +53,53 @@ fun BackGestureProviderContainer(
     modifier: Modifier = Modifier,
     startEdgeEnabled: Boolean = true,
     endEdgeEnabled: Boolean = false,
-    edgeWidth: Dp? = 16.dp,
+    backGestureProcessingType: BackGestureProcessingType = BackGestureProcessingType.BlockChildDragInputsPartially(),
     activationOffsetThreshold: Dp = 4.dp,
     progressConfirmationThreshold: Float = 0.2F,
     velocityConfirmationThreshold: Dp = 8.dp,
-    blockChildDragInputs: Boolean = true,
+    content: @Composable () -> Unit,
+) = BackGestureProviderContainer(
+    defaultComponentContext.backHandler as BackDispatcher,
+    modifier,
+    startEdgeEnabled,
+    endEdgeEnabled,
+    backGestureProcessingType,
+    activationOffsetThreshold,
+    progressConfirmationThreshold,
+    velocityConfirmationThreshold,
+    content
+)
+
+/**
+ * Handles back gestures on both edges of the screen and drives the provided [BackDispatcher] accordingly.
+ *
+ * @param modifier a [Modifier] to applied to the overlay.
+ * @param startEdgeEnabled controls whether the start edge is enabled or not,
+ * left in LTR mode and right in RTL mode.
+ * @param endEdgeEnabled controls whether the end edge is enabled or not,
+ * right in LTR mode and left in RTL mode.
+ * @param backGestureProcessingType The type of gesture processing mechanism.
+ * @param activationOffsetThreshold a distance threshold in [Dp] from the initial touch point in the direction
+ * of gesture. The gesture is initiated once this threshold is surpassed.
+ * @param progressConfirmationThreshold a threshold of progress that needs to be reached for the gesture
+ * to be confirmed once the touch is completed. The gesture is cancelled if the touch is completed without
+ * reaching the threshold.
+ * @param content a content to be shown under the overlay.
+ */
+@Composable
+@Stable
+@ExperimentalDecomposeApi
+fun BackGestureProviderContainer(
+    backDispatcher: BackDispatcher,
+    modifier: Modifier = Modifier,
+    startEdgeEnabled: Boolean = true,
+    endEdgeEnabled: Boolean = false,
+    backGestureProcessingType: BackGestureProcessingType = BackGestureProcessingType.BlockChildDragInputsPartially(),
+    activationOffsetThreshold: Dp = 4.dp,
+    progressConfirmationThreshold: Float = 0.2F,
+    velocityConfirmationThreshold: Dp = 8.dp,
     content: @Composable () -> Unit,
 ) {
-    val backDispatcher = defaultComponentContext.backHandler as BackDispatcher
     val layoutDirection = LocalLayoutDirection.current
 
     Box(
@@ -76,15 +113,42 @@ fun BackGestureProviderContainer(
                 LayoutDirection.Ltr -> endEdgeEnabled
                 LayoutDirection.Rtl -> startEdgeEnabled
             },
-            edgeWidth = edgeWidth,
+            backGestureProcessingType = backGestureProcessingType,
             activationOffsetThreshold = activationOffsetThreshold,
             progressConfirmationThreshold = progressConfirmationThreshold,
             velocityConfirmationThreshold = velocityConfirmationThreshold,
-            blockChildDragInputs = blockChildDragInputs
         ),
     ) {
         content()
     }
+}
+
+sealed class BackGestureProcessingType(val edgeWidth: Dp) {
+    /**
+     * Input in children will be blocked when a back gesture is detected,
+     * for example when swiping vertical and horizontal lists.
+     * If edgeWidth equals Dp.Infinity - the entire layer will detect back gestures.
+     */
+    class BlockChildDragInputs(edgeWidth: Dp = Dp.Infinity) : BackGestureProcessingType(edgeWidth)
+
+    /**
+     * Input in children will be allowed when a back gesture is detected,
+     * meaning gestures things like lists will prevent the back gesture from being detected.
+     * Such behavior is dependent on the gesture processing implementation of the children.
+     * If edgeWidth equals Dp.Infinity - the entire layer will detect back gestures.
+     */
+    class AllowChildDragInputs(edgeWidth: Dp = Dp.Infinity) : BackGestureProcessingType(edgeWidth)
+
+    /**
+     * Input in children will be allowed when a back gesture is detected,
+     * meaning gestures things like lists will prevent the back gesture from being detected,
+     * but layer's edges will still block input in children
+     * If any of the widths equal Dp.Infinity - the entire layer will detect back gestures.
+     */
+    class BlockChildDragInputsPartially(
+        val blockingEdgeWidth: Dp = 8.dp,
+        nonBlockingEdgeWidth: Dp = Dp.Infinity
+    ) : BackGestureProcessingType(nonBlockingEdgeWidth)
 }
 
 /**
@@ -93,50 +157,121 @@ fun BackGestureProviderContainer(
  * @param backDispatcher The [BackDispatcher] instance that will receive the back gestures.
  * @param leftEdgeEnabled Whether the left edge of the composable is enabled for back gestures.
  * @param rightEdgeEnabled Whether the right edge of the composable is enabled for back gestures.
- * @param edgeWidth The width of the edge area that will trigger a back gesture. Defaults to null.
- * When null - uses the full composable's width
+ * @param backGestureProcessingType The type of gesture processing mechanism.
  * @param activationOffsetThreshold The minimum distance the user must drag to activate a back gesture. Defaults to 4.dp.
  * @param progressConfirmationThreshold The minimum progress required to confirm a back gesture. Defaults to 0.2F.
  * @param velocityConfirmationThreshold The minimum velocity required to confirm a back gesture. Defaults to 8.dp.
- * @param blockChildDragInputs Whether to block child drag inputs. Defaults to false.
  */
 fun Modifier.backGestureProvider(
     backDispatcher: BackDispatcher,
     leftEdgeEnabled: Boolean = true,
     rightEdgeEnabled: Boolean = false,
-    edgeWidth: Dp? = null,
+    backGestureProcessingType: BackGestureProcessingType = BackGestureProcessingType.BlockChildDragInputsPartially(),
     activationOffsetThreshold: Dp = 4.dp,
     progressConfirmationThreshold: Float = 0.2F,
     velocityConfirmationThreshold: Dp = 8.dp,
-    blockChildDragInputs: Boolean = false
 ) = this.backGestureDetector(
     leftEdgeEnabled = leftEdgeEnabled,
     rightEdgeEnabled = rightEdgeEnabled,
-    edgeWidth = edgeWidth,
+    backGestureProcessingType = backGestureProcessingType,
     activationOffsetThreshold = activationOffsetThreshold,
     progressConfirmationThreshold = progressConfirmationThreshold,
     velocityConfirmationThreshold = velocityConfirmationThreshold,
-    blockChildDragInputs = blockChildDragInputs,
     onStart = backDispatcher::startPredictiveBack,
     onProgress = backDispatcher::progressPredictiveBack,
     onCancel = backDispatcher::cancelPredictiveBack,
     onConfirm = backDispatcher::back
 )
 
+/**
+ * Detects drag gestures on a composable and reports the state via [onStart], [onProgress], [onCancel], and [onConfirm].
+ *
+ * @param leftEdgeEnabled Whether the left edge of the composable is enabled for back gestures.
+ * @param rightEdgeEnabled Whether the right edge of the composable is enabled for back gestures.
+ * @param backGestureProcessingType The width of the edge area that will trigger a back gesture. Defaults to null.
+ * @param activationOffsetThreshold The minimum distance the user must drag to activate a back gesture. Defaults to 4.dp.
+ * @param progressConfirmationThreshold The minimum progress required to confirm a back gesture. Defaults to 0.2F.
+ * @param velocityConfirmationThreshold The minimum velocity required to confirm a back gesture. Defaults to 8.dp.
+ */
 fun Modifier.backGestureDetector(
     leftEdgeEnabled: Boolean = true,
     rightEdgeEnabled: Boolean = false,
-    edgeWidth: Dp? = null,
+    backGestureProcessingType: BackGestureProcessingType = BackGestureProcessingType.BlockChildDragInputsPartially(),
     activationOffsetThreshold: Dp = 4.dp,
     progressConfirmationThreshold: Float = 0.2F,
     velocityConfirmationThreshold: Dp = 8.dp,
-    blockChildDragInputs: Boolean = false,
     onStart: (BackEvent) -> Unit,
     onProgress: (BackEvent) -> Unit,
     onCancel: () -> Unit,
     onConfirm: () -> Unit
-) = if (blockChildDragInputs) pointerInput(leftEdgeEnabled, rightEdgeEnabled) {
-    val triggerWidth = edgeWidth?.toPx() ?: size.width.toFloat()
+) = when (backGestureProcessingType) {
+    is BackGestureProcessingType.AllowChildDragInputs -> nonBlockingGestureDetector(
+        leftEdgeEnabled,
+        rightEdgeEnabled,
+        backGestureProcessingType.edgeWidth,
+        activationOffsetThreshold,
+        progressConfirmationThreshold,
+        velocityConfirmationThreshold,
+        onStart,
+        onProgress,
+        onCancel,
+        onConfirm
+    )
+
+    is BackGestureProcessingType.BlockChildDragInputs -> blockingGestureDetector(
+        leftEdgeEnabled,
+        rightEdgeEnabled,
+        backGestureProcessingType.edgeWidth,
+        activationOffsetThreshold,
+        progressConfirmationThreshold,
+        velocityConfirmationThreshold,
+        onStart,
+        onProgress,
+        onCancel,
+        onConfirm
+    )
+
+    is BackGestureProcessingType.BlockChildDragInputsPartially -> this
+        .nonBlockingGestureDetector(
+            leftEdgeEnabled,
+            rightEdgeEnabled,
+            backGestureProcessingType.edgeWidth,
+            activationOffsetThreshold,
+            progressConfirmationThreshold,
+            velocityConfirmationThreshold,
+            onStart,
+            onProgress,
+            onCancel,
+            onConfirm
+        )
+        .blockingGestureDetector(
+            leftEdgeEnabled,
+            rightEdgeEnabled,
+            backGestureProcessingType.blockingEdgeWidth,
+            activationOffsetThreshold,
+            progressConfirmationThreshold,
+            velocityConfirmationThreshold,
+            onStart,
+            onProgress,
+            onCancel,
+            onConfirm
+        )
+}
+
+
+private fun Modifier.blockingGestureDetector(
+    leftEdgeEnabled: Boolean = true,
+    rightEdgeEnabled: Boolean = false,
+    edgeWidth: Dp = Dp.Infinity,
+    activationOffsetThreshold: Dp = 4.dp,
+    progressConfirmationThreshold: Float = 0.2F,
+    velocityConfirmationThreshold: Dp = 8.dp,
+    onStart: (BackEvent) -> Unit,
+    onProgress: (BackEvent) -> Unit,
+    onCancel: () -> Unit,
+    onConfirm: () -> Unit
+) = this.pointerInput(leftEdgeEnabled, rightEdgeEnabled) {
+    val triggerWidth = if (edgeWidth == Dp.Infinity) size.width.toFloat() else edgeWidth.toPx()
 
     awaitEachGesture {
         val firstDown = awaitFirstDown(pass = PointerEventPass.Initial)
@@ -172,8 +307,21 @@ fun Modifier.backGestureDetector(
         )
         with(handler) { handleGesture() }
     }
-} else pointerInput(leftEdgeEnabled, rightEdgeEnabled) {
-    val triggerWidth = edgeWidth?.let { it.value * density } ?: size.width.toFloat()
+}
+
+private fun Modifier.nonBlockingGestureDetector(
+    leftEdgeEnabled: Boolean = true,
+    rightEdgeEnabled: Boolean = false,
+    edgeWidth: Dp = Dp.Infinity,
+    activationOffsetThreshold: Dp = 4.dp,
+    progressConfirmationThreshold: Float = 0.2F,
+    velocityConfirmationThreshold: Dp = 8.dp,
+    onStart: (BackEvent) -> Unit,
+    onProgress: (BackEvent) -> Unit,
+    onCancel: () -> Unit,
+    onConfirm: () -> Unit
+) = pointerInput(leftEdgeEnabled, rightEdgeEnabled) {
+    val triggerWidth = if (edgeWidth == Dp.Infinity) size.width.toFloat() else edgeWidth.toPx()
     var edge: SwipeEdge = SwipeEdge.UNKNOWN
     var progress = 0f
     var velocityPx = 0f
@@ -396,5 +544,3 @@ private class BackGestureHandler(
 
     enum class Edge { LEFT, RIGHT }
 }
-
-

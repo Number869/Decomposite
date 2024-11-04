@@ -42,7 +42,6 @@ fun main() = application {
                 // detect the gestures
                 BackGestureProviderContainer(
                     navigationRootData.defaultComponentContext,
-                    edgeWidth = (window.size.width / LocalDensity.current.density).dp,
                     content = {
                         NavigationRootProvider(navigationRootData, windowState) {
                             App()

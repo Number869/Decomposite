@@ -24,7 +24,6 @@ class AppActivity : ComponentActivity() {
                 Surface {
                     BackGestureProviderContainer(
                         navigationRootData.defaultComponentContext,
-                        edgeWidth = null
                     ) {
                         NavigationRootProvider(navigationRootData) { App() }
                     }
